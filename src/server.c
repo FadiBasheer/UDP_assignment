@@ -1,0 +1,540 @@
+#include "echo.h"
+#include <dc_application/command_line.h>
+#include <dc_application/config.h>
+#include <dc_application/options.h>
+#include <dc_network/common.h>
+#include <dc_network/options.h>
+#include <dc_network/server.h>
+#include <dc_posix/dc_netdb.h>
+#include <dc_posix/dc_signal.h>
+#include <dc_posix/dc_string.h>
+#include <dc_posix/sys/dc_socket.h>
+#include <dc_util/dump.h>
+#include <dc_util/streams.h>
+#include <dc_util/types.h>
+#include <getopt.h>
+#include <pthread.h>
+#include <unistd.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <error.h>
+#include <asm-generic/socket.h>
+#include <wait.h>
+#include <unistd.h>
+#include <fcntl.h>
+
+
+#define MAXLINE 1024
+
+struct application_settings {
+    struct dc_opt_settings opts;
+    struct dc_setting_bool *verbose;
+    struct dc_setting_string *hostname;
+    struct dc_setting_regex *ip_version;
+    struct dc_setting_uint16 *port;
+    struct dc_setting_bool *reuse_address;
+    struct addrinfo *address;
+    int server_socket_fd;
+};
+
+static struct dc_application_settings *create_settings(const struct dc_posix_env *env, struct dc_error *err);
+
+static int
+destroy_settings(const struct dc_posix_env *env, struct dc_error *err, struct dc_application_settings **psettings);
+
+static int run(const struct dc_posix_env *env, struct dc_error *err, struct dc_application_settings *settings);
+
+static void signal_handler(int signnum);
+
+static void do_create_settings(const struct dc_posix_env *env, struct dc_error *err, void *arg);
+
+static void do_create_socket(const struct dc_posix_env *env, struct dc_error *err, void *arg);
+
+static void do_set_sockopts(const struct dc_posix_env *env, struct dc_error *err, void *arg);
+
+static void do_bind(const struct dc_posix_env *env, struct dc_error *err, void *arg);
+
+static void do_listen(const struct dc_posix_env *env, struct dc_error *err, void *arg);
+
+static void do_setup(const struct dc_posix_env *env, struct dc_error *err, void *arg);
+
+static bool do_accept(const struct dc_posix_env *env, struct dc_error *err, int *client_socket_fd, void *arg);
+
+static void do_shutdown(const struct dc_posix_env *env, struct dc_error *err, void *arg);
+
+static void do_destroy_settings(const struct dc_posix_env *env, struct dc_error *err, void *arg);
+
+void echo(const struct dc_posix_env *env, struct dc_error *err, int client_socket_fd);
+
+/*
+static void write_displayer(const struct dc_posix_env *env, struct dc_error *err, const uint8_t *data, size_t count,
+                            size_t file_position, void *arg);
+
+static void read_displayer(const struct dc_posix_env *env, struct dc_error *err, const uint8_t *data, size_t count,
+                           size_t file_position, void *arg);
+*/
+
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+static volatile sig_atomic_t exit_signal = 0;
+
+int main(int argc, char *argv[]) {
+    dc_posix_tracer tracer;
+    dc_error_reporter reporter;
+    struct dc_posix_env env;
+    struct dc_error err;
+    struct dc_application_info *info;
+    int ret_val;
+    struct sigaction sa;
+
+    tracer = dc_posix_default_tracer;
+    tracer = NULL;
+    dc_posix_env_init(&env, tracer);
+    reporter = dc_error_default_error_reporter;
+    dc_error_init(&err, reporter);
+    dc_memset(&env, &sa, 0, sizeof(sa));
+    sa.sa_handler = &signal_handler;
+    sa.sa_flags = 0;
+    dc_sigaction(&env, &err, SIGINT, &sa, NULL);
+    dc_sigaction(&env, &err, SIGTERM, &sa, NULL);
+
+    info = dc_application_info_create(&env, &err, "Echo Server");
+    ret_val = dc_application_run(&env, &err, info, create_settings, destroy_settings, run, dc_default_create_lifecycle,
+                                 dc_default_destroy_lifecycle,
+                                 "~/.dcecho.conf",
+                                 argc, argv);
+    dc_application_info_destroy(&env, &info);
+    dc_error_reset(&err);
+
+    return ret_val;
+}
+
+
+static struct dc_application_settings *create_settings(const struct dc_posix_env *env, struct dc_error *err) {
+    static const bool default_verbose = false;
+    static const char *default_hostname = "localhost";
+    static const char *default_ip = "IPv4";
+    static const uint16_t default_port = DEFAULT_ECHO_PORT;
+    static const bool default_reuse = false;
+    struct application_settings *settings;
+
+    DC_TRACE(env);
+    settings = dc_malloc(env, err, sizeof(struct application_settings));
+
+    if (settings == NULL) {
+        return NULL;
+    }
+
+    settings->opts.parent.config_path = dc_setting_path_create(env, err);
+    settings->verbose = dc_setting_bool_create(env, err);
+    settings->hostname = dc_setting_string_create(env, err);
+    settings->ip_version = dc_setting_regex_create(env, err, "^IPv[4|6]");
+    settings->port = dc_setting_uint16_create(env, err);
+    settings->reuse_address = dc_setting_bool_create(env, err);
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeclaration-after-statement"
+    struct options opts[] =
+            {
+                    {(struct dc_setting *) settings->opts.parent.config_path, dc_options_set_path,   "config",  required_argument, 'c', "CONFIG",        dc_string_from_string, NULL,            dc_string_from_config, NULL},
+                    {(struct dc_setting *) settings->verbose,                 dc_options_set_bool,   "verbose", no_argument,       'v', "VERBOSE",       dc_flag_from_string,   "verbose",       dc_flag_from_config,   &default_verbose},
+                    {(struct dc_setting *) settings->hostname,                dc_options_set_string, "host",    required_argument, 'h', "HOST",          dc_string_from_string, "host",          dc_string_from_config, default_hostname},
+                    {(struct dc_setting *) settings->ip_version,              dc_options_set_regex,  "ip",      required_argument, 'i', "IP",            dc_string_from_string, "ip",            dc_string_from_config, default_ip},
+                    {(struct dc_setting *) settings->port,                    dc_options_set_uint16, "port",    required_argument, 'p', "PORT",          dc_uint16_from_string, "port",          dc_uint16_from_config, &default_port},
+                    {(struct dc_setting *) settings->reuse_address,           dc_options_set_bool,   "force",   no_argument,       'f', "REUSE_ADDRESS", dc_flag_from_string,   "reuse_address", dc_flag_from_config,   &default_reuse},
+            };
+#pragma GCC diagnostic pop
+
+    // note the trick here - we use calloc and add 1 to ensure the last line is all 0/NULL
+    settings->opts.opts = dc_calloc(env, err, (sizeof(opts) / sizeof(struct options)) + 1, sizeof(struct options));
+    dc_memcpy(env, settings->opts.opts, opts, sizeof(opts));
+    settings->opts.flags = "c:vh:i:p:f";
+    settings->opts.env_prefix = "DC_ECHO_";
+
+    return (struct dc_application_settings *) settings;
+}
+
+static int destroy_settings(const struct dc_posix_env *env, __attribute__ ((unused)) struct dc_error *err,
+                            struct dc_application_settings **psettings) {
+    struct application_settings *app_settings;
+
+    DC_TRACE(env);
+    app_settings = (struct application_settings *) *psettings;
+    dc_setting_bool_destroy(env, &app_settings->verbose);
+    dc_setting_string_destroy(env, &app_settings->hostname);
+    dc_setting_regex_destroy(env, &app_settings->ip_version);
+    dc_setting_uint16_destroy(env, &app_settings->port);
+    dc_setting_bool_destroy(env, &app_settings->reuse_address);
+    dc_free(env, app_settings->opts.opts, app_settings->opts.opts_size);
+    dc_free(env, app_settings, sizeof(struct application_settings));
+
+    if (env->null_free) {
+        *psettings = NULL;
+    }
+    return 0;
+}
+
+
+static struct dc_server_lifecycle *create_server_lifecycle(const struct dc_posix_env *env, struct dc_error *err) {
+    struct dc_server_lifecycle *lifecycle;
+
+    DC_TRACE(env);
+    lifecycle = dc_server_lifecycle_create(env, err);
+    dc_server_lifecycle_set_create_settings(env, lifecycle, do_create_settings);
+    dc_server_lifecycle_set_create_socket(env, lifecycle, do_create_socket);
+    dc_server_lifecycle_set_set_sockopts(env, lifecycle, do_set_sockopts);
+    dc_server_lifecycle_set_bind(env, lifecycle, do_bind);
+    dc_server_lifecycle_set_listen(env, lifecycle, do_listen);
+    dc_server_lifecycle_set_setup(env, lifecycle, do_setup);
+    dc_server_lifecycle_set_accept(env, lifecycle, do_accept);
+    dc_server_lifecycle_set_shutdown(env, lifecycle, do_shutdown);
+    dc_server_lifecycle_set_destroy_settings(env, lifecycle, do_destroy_settings);
+
+    return lifecycle;
+}
+
+static void destroy_server_lifecycle(const struct dc_posix_env *env, struct dc_server_lifecycle **plifecycle) {
+    DC_TRACE(env);
+    dc_server_lifecycle_destroy(env, plifecycle);
+}
+
+
+static int run(const struct dc_posix_env *env, __attribute__ ((unused)) struct dc_error *err,
+               struct dc_application_settings *settings) {
+    int ret_val;
+    struct dc_server_info *info;
+
+    DC_TRACE(env);
+    info = dc_server_info_create(env, err, "Echo Server", NULL, settings);
+
+    if (dc_error_has_no_error(err)) {
+        dc_server_run(env, err, info, create_server_lifecycle, destroy_server_lifecycle);
+        dc_server_info_destroy(env, &info);
+    }
+
+    if (dc_error_has_no_error(err)) {
+        ret_val = 0;
+    } else {
+        ret_val = -1;
+    }
+    return ret_val;
+}
+
+
+void signal_handler(__attribute__ ((unused)) int signnum) {
+    printf("caught %d\n", signnum);
+    exit_signal = 1;
+}
+
+static void do_create_settings(const struct dc_posix_env *env, struct dc_error *err, void *arg) {
+    struct application_settings *app_settings;
+    const char *ip_version;
+    int family;
+
+    DC_TRACE(env);
+    app_settings = arg;
+    ip_version = dc_setting_regex_get(env, app_settings->ip_version);
+
+    if (dc_strcmp(env, ip_version, "IPv4") == 0) {
+        family = PF_INET;
+    } else {
+        if (dc_strcmp(env, ip_version, "IPv6") == 0) {
+            family = PF_INET6;
+        } else {
+            DC_ERROR_RAISE_USER(err, "Invalid ip_version", -1);
+            family = 0;
+        }
+    }
+    if (dc_error_has_no_error(err)) {
+        const char *hostname;
+
+        hostname = dc_setting_string_get(env, app_settings->hostname);
+        dc_network_get_addresses(env, err, family, SOCK_STREAM, hostname, &app_settings->address);
+    }
+}
+
+static void do_create_socket(const struct dc_posix_env *env, struct dc_error *err, void *arg) {
+    struct application_settings *app_settings;
+    int socket_fd;
+
+    DC_TRACE(env);
+    app_settings = arg;
+    socket_fd = dc_network_create_socket(env, err, app_settings->address);
+
+    if (dc_error_has_no_error(err)) {
+        app_settings = arg;
+        app_settings->server_socket_fd = socket_fd;
+    } else {
+        socket_fd = -1;
+    }
+}
+
+static void do_set_sockopts(const struct dc_posix_env *env, struct dc_error *err, void *arg) {
+    struct application_settings *app_settings;
+    bool reuse_address;
+
+    DC_TRACE(env);
+    app_settings = arg;
+    reuse_address = dc_setting_bool_get(env, app_settings->reuse_address);
+    dc_network_opt_ip_so_reuse_addr(env, err, app_settings->server_socket_fd, reuse_address);
+}
+
+static void do_bind(const struct dc_posix_env *env, struct dc_error *err, void *arg) {
+    struct application_settings *app_settings;
+    uint16_t port;
+
+    DC_TRACE(env);
+    app_settings = arg;
+    port = dc_setting_uint16_get(env, app_settings->port);
+
+
+//    int optval = 1;
+//    setsockopt(app_settings->server_socket_fd, SOL_SOCKET, SO_REUSEPORT, &optval, sizeof(optval));
+
+    dc_network_bind(env,
+                    err,
+                    app_settings->server_socket_fd,
+                    app_settings->address->ai_addr,
+                    port);
+}
+
+static void do_listen(const struct dc_posix_env *env, struct dc_error *err, void *arg) {
+    struct application_settings *app_settings;
+    int backlog;
+
+    DC_TRACE(env);
+    app_settings = arg;
+    backlog = 5;    // TODO: make this a setting
+    dc_network_listen(env, err, app_settings->server_socket_fd, backlog);
+}
+
+static void do_setup(const struct dc_posix_env *env, __attribute__ ((unused)) struct dc_error *err,
+                     __attribute__ ((unused)) void *arg) {
+    DC_TRACE(env);
+}
+
+#define MAX 80
+pthread_mutex_t mutexFuel;
+pthread_cond_t condFuel;
+int fuel = 0;
+
+
+void *fuel_filling(void *arg) {
+    printf("TCCCCCCCCCCCCCCCCCCCCCCCCppppppppp\n");
+    int *connfd = (int *) arg;
+    char buff[MAX];
+
+    for (;;) {
+        bzero(buff, MAX);
+
+        // read the message from client and copy it in buffer
+        read(*connfd, buff, sizeof(buff));
+        // print buffer which contains the client contents
+        printf("From client TCP: %s\n", buff);
+        // bzero(buff, MAX);
+//        n = 0;
+//        // copy server message in the buffer
+//        while ((buff[n++] = getchar()) != '\n');
+
+        //  sleep(3);
+
+        // and send that buffer to client
+        //  write(connfd, buff, sizeof(buff));
+
+        // if msg contains "Exit" then server exit and chat ended.
+        if (strncmp("exit", buff, 4) == 0) {
+            printf("\nServer Exit...\n");
+            write(*connfd, buff, sizeof(buff));
+            fuel = 1;
+            break;
+        }
+        //  pthread_mutex_destroy(&mutexFuel);
+        write(*connfd, buff, sizeof(buff));
+    }
+    // write(*connfd, buff, sizeof(buff));
+    return NULL;
+}
+
+
+void *car(void *arg) {
+
+    uint16_t *port = (uint16_t *) arg;
+    dc_posix_tracer tracer;
+    struct dc_posix_env env;
+    struct dc_error err;
+    struct dc_application_info *info;
+    int ret_val;
+    struct sigaction sa;
+
+    tracer = dc_posix_default_tracer;
+    tracer = NULL;
+    dc_posix_env_init(&env, tracer);
+
+
+    int sockfd;
+    char buffer[MAXLINE];
+    char *hello = "Hello from server";
+    struct sockaddr_in servaddr, cliaddr;
+
+
+    // Creating socket file descriptor
+    if ((sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
+        perror("socket creation failed");
+        exit(EXIT_FAILURE);
+    }
+    memset(&servaddr, 0, sizeof(servaddr));
+    memset(&cliaddr, 0, sizeof(cliaddr));
+
+    // Filling server information
+    servaddr.sin_family = AF_INET; // IPv4
+    inet_pton(AF_INET, "localhost", &servaddr.sin_addr);
+    servaddr.sin_port = htons(*port);
+
+    int optval = 1;
+    setsockopt(sockfd, SOL_SOCKET, SO_REUSEPORT, &optval, sizeof(optval));
+
+    // Bind the socket with the server address
+    if (bind(sockfd, (const struct sockaddr *) &servaddr,
+             sizeof(servaddr)) < 0) {
+        perror("bind failed");
+        exit(EXIT_FAILURE);
+    }
+    ssize_t len, n;
+
+    len = sizeof(cliaddr);  //len is value/resuslt
+
+
+
+    int flags = fcntl(sockfd, F_GETFL);
+    flags |= O_NONBLOCK;
+    fcntl(sockfd, F_SETFL, flags);
+
+
+    while (fuel == 0) {
+        n = recvfrom(sockfd, (char *) buffer, MAXLINE,
+                     MSG_WAITALL, (struct sockaddr *) &cliaddr,
+                     (socklen_t *) &len);
+        buffer[n] = '\0';
+        printf("Client : %s\n", buffer);
+//        sendto(sockfd, (const char *) hello, strlen(hello),
+//               MSG_CONFIRM, (const struct sockaddr *) &cliaddr,
+//               len);
+        printf("Hello message sent.\n");
+        //   pthread_mutex_init(&mutexFuel, NULL);
+        // sleep(1);
+    }
+    printf("\nUDP Exit...\n");
+    return NULL;
+}
+
+
+static size_t count(const char *str, int c) {
+    size_t num;
+    num = 0;
+    for (const char *tmp = str; *tmp; tmp++) {
+        if (*tmp == c) {
+            num++;
+        }
+    }
+    return num;
+}
+
+static bool do_accept(const struct dc_posix_env *env, struct dc_error *err, int *client_socket_fd, void *arg) {
+    struct application_settings *app_settings;
+    bool ret_val;
+
+    DC_TRACE(env);
+    app_settings = arg;
+    ret_val = false;
+    pid_t childpid;
+    int pid;
+
+    char buffer[1024];
+
+
+    // printf("app_settings->port 1: %d\n", dc_setting_uint16_get(env, app_settings->port));
+
+
+    while (1) {
+        printf("accepting\n");
+
+//        int optval = 1;
+//        setsockopt(app_settings->server_socket_fd, SOL_SOCKET, SO_REUSEPORT, &optval, sizeof(optval));
+
+        *client_socket_fd = dc_network_accept(env, err, app_settings->server_socket_fd);
+
+
+        if (*client_socket_fd < 0) {
+            exit(1);
+        }
+        //  printf("Connection accepted from %s:%d\n", inet_ntoa(app_settings->hostname), ntohs(newAddr.sin_port));
+        printf("accepted\n");
+
+        pid = fork();
+        if (pid < 0) {
+            perror("ERROR in new process creation");
+            exit(1);
+        }
+        if (pid == 0) {
+            //child process
+            printf("cjild\n");
+            close(app_settings->server_socket_fd);
+
+            if (dc_error_has_error(err)) {
+                if (exit_signal == 1 && dc_error_is_errno(err, EINTR)) {
+                    ret_val = true;
+                    dc_error_reset(err);
+                }
+            } else {
+                char buff[1024];
+                read(*client_socket_fd, buff, sizeof(buff));
+                printf("From client TCP 11111111: %s\n", buff);
+                write(*client_socket_fd, buff, sizeof(buff));
+
+                if (strncmp("exit", buff, 4) == 0) {
+                    printf("\nServer Exit TCP 1111111\n");
+                    fuel = 1;
+                } else {
+                    pthread_t thread_1, thread_2;
+                    //pthread_mutex_init(&mutexFuel, NULL);
+                    //pthread_cond_init(&condFuel, NULL);
+
+                    if (pthread_create(&thread_1, NULL, &fuel_filling, client_socket_fd) != 0) {
+                        perror("Failed to create thread");
+                    }
+
+                    uint16_t port_number = dc_setting_uint16_get(env, app_settings->port);
+
+                    if (pthread_create(&thread_2, NULL, &car, (void *) &port_number) != 0) {
+                        perror("Failed to create thread");
+                    }
+                    pthread_join(thread_1, NULL);
+                    pthread_join(thread_2, NULL);
+
+//                    pthread_mutex_destroy(&mutexFuel);
+//                    pthread_cond_destroy(&condFuel);
+                    printf("end child\n");
+                }
+            }
+        } else {
+            printf("parent\n");
+            //parent process
+            // wait(NULL);
+            close(*client_socket_fd);
+        }
+    }
+    return ret_val;
+}
+
+static void do_shutdown(const struct dc_posix_env *env, __attribute__ ((unused)) struct dc_error *err,
+                        __attribute__ ((unused)) void *arg) {
+    DC_TRACE(env);
+}
+
+static void
+do_destroy_settings(const struct dc_posix_env *env, __attribute__ ((unused)) struct dc_error *err, void *arg) {
+    struct application_settings *app_settings;
+
+    DC_TRACE(env);
+    app_settings = arg;
+    dc_freeaddrinfo(env, app_settings->address);
+}
