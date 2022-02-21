@@ -316,7 +316,7 @@ static void do_setup(const struct dc_posix_env *env, __attribute__ ((unused)) st
 pthread_mutex_t mutexFuel;
 pthread_cond_t condFuel;
 int fuel = 0;
-
+int counter = 0;
 
 void *fuel_filling(void *arg) {
     printf("TCCCCCCCCCCCCCCCCCCCCCCCCppppppppp\n");
@@ -349,26 +349,30 @@ void *fuel_filling(void *arg) {
         }
         //  pthread_mutex_destroy(&mutexFuel);
         write(*connfd, buff, sizeof(buff));
+        sleep(1);
     }
     // write(*connfd, buff, sizeof(buff));
+    printf("Counter: %d\n", counter);
     return NULL;
 }
 
 
 void *car(void *arg) {
+    struct application_settings *app_settings;
+    const char *hostname;
+    in_port_t port;
 
-    uint16_t *port = (uint16_t *) arg;
+    app_settings = arg;
+    //uint16_t *port = (uint16_t *) arg;
     dc_posix_tracer tracer;
     struct dc_posix_env env;
-    struct dc_error err;
-    struct dc_application_info *info;
-    int ret_val;
-    struct sigaction sa;
 
     tracer = dc_posix_default_tracer;
     tracer = NULL;
     dc_posix_env_init(&env, tracer);
 
+    hostname = dc_setting_string_get(&env, app_settings->hostname);
+    port = dc_setting_uint16_get(&env, app_settings->port);
 
     int sockfd;
     char buffer[MAXLINE];
@@ -386,8 +390,8 @@ void *car(void *arg) {
 
     // Filling server information
     servaddr.sin_family = AF_INET; // IPv4
-    inet_pton(AF_INET, "localhost", &servaddr.sin_addr);
-    servaddr.sin_port = htons(*port);
+    inet_pton(AF_INET, hostname, &servaddr.sin_addr);
+    servaddr.sin_port = htons(port);
 
     int optval = 1;
     setsockopt(sockfd, SOL_SOCKET, SO_REUSEPORT, &optval, sizeof(optval));
@@ -413,14 +417,16 @@ void *car(void *arg) {
         n = recvfrom(sockfd, (char *) buffer, MAXLINE,
                      MSG_WAITALL, (struct sockaddr *) &cliaddr,
                      (socklen_t *) &len);
-        buffer[n] = '\0';
-        printf("Client : %s\n", buffer);
+        if (n != -1) {
+            buffer[n] = '\0';
+            printf("Client : %s\n", buffer);
 //        sendto(sockfd, (const char *) hello, strlen(hello),
 //               MSG_CONFIRM, (const struct sockaddr *) &cliaddr,
 //               len);
-        printf("Hello message sent.\n");
-        //   pthread_mutex_init(&mutexFuel, NULL);
-        // sleep(1);
+            printf("Hello message sent.\n");
+            //   pthread_mutex_init(&mutexFuel, NULL);
+            counter++;
+        }
     }
     printf("\nUDP Exit...\n");
     return NULL;
@@ -438,6 +444,10 @@ static size_t count(const char *str, int c) {
     return num;
 }
 
+int sockfd, newsockfd, portno, clilen;
+char buffer[256];
+struct sockaddr_in serv_addr, cli_addr;
+
 static bool do_accept(const struct dc_posix_env *env, struct dc_error *err, int *client_socket_fd, void *arg) {
     struct application_settings *app_settings;
     bool ret_val;
@@ -445,28 +455,21 @@ static bool do_accept(const struct dc_posix_env *env, struct dc_error *err, int 
     DC_TRACE(env);
     app_settings = arg;
     ret_val = false;
-    pid_t childpid;
     int pid;
 
     char buffer[1024];
 
-
-    // printf("app_settings->port 1: %d\n", dc_setting_uint16_get(env, app_settings->port));
-
+    listen(sockfd, 5);
+    clilen = sizeof(cli_addr);
 
     while (1) {
         printf("accepting\n");
 
-//        int optval = 1;
-//        setsockopt(app_settings->server_socket_fd, SOL_SOCKET, SO_REUSEPORT, &optval, sizeof(optval));
-
         *client_socket_fd = dc_network_accept(env, err, app_settings->server_socket_fd);
-
 
         if (*client_socket_fd < 0) {
             exit(1);
         }
-        //  printf("Connection accepted from %s:%d\n", inet_ntoa(app_settings->hostname), ntohs(newAddr.sin_port));
         printf("accepted\n");
 
         pid = fork();
@@ -475,8 +478,6 @@ static bool do_accept(const struct dc_posix_env *env, struct dc_error *err, int 
             exit(1);
         }
         if (pid == 0) {
-            //child process
-            printf("cjild\n");
             close(app_settings->server_socket_fd);
 
             if (dc_error_has_error(err)) {
@@ -487,8 +488,8 @@ static bool do_accept(const struct dc_posix_env *env, struct dc_error *err, int 
             } else {
                 char buff[1024];
                 read(*client_socket_fd, buff, sizeof(buff));
-                printf("From client TCP 11111111: %s\n", buff);
-                write(*client_socket_fd, buff, sizeof(buff));
+                printf("From client TCP: %s\n", buff);
+                write(*client_socket_fd, "ok", sizeof("ok"));
 
                 if (strncmp("exit", buff, 4) == 0) {
                     printf("\nServer Exit TCP 1111111\n");
@@ -504,7 +505,7 @@ static bool do_accept(const struct dc_posix_env *env, struct dc_error *err, int 
 
                     uint16_t port_number = dc_setting_uint16_get(env, app_settings->port);
 
-                    if (pthread_create(&thread_2, NULL, &car, (void *) &port_number) != 0) {
+                    if (pthread_create(&thread_2, NULL, &car, arg) != 0) {
                         perror("Failed to create thread");
                     }
                     pthread_join(thread_1, NULL);
@@ -515,12 +516,14 @@ static bool do_accept(const struct dc_posix_env *env, struct dc_error *err, int 
                     printf("end child\n");
                 }
             }
+            exit(0);
         } else {
             printf("parent\n");
             //parent process
             // wait(NULL);
             close(*client_socket_fd);
         }
+        sleep(2);
     }
     return ret_val;
 }

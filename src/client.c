@@ -40,6 +40,8 @@ struct TIME {
 int UDP_client(const struct dc_posix_env *env, __attribute__ ((unused)) struct dc_error *err,
                struct dc_application_settings *settings);
 
+int Calculate_starting_time(char *starting_time);
+
 int differenceBetweenTimePeriod(struct TIME start,
                                 struct TIME stop,
                                 struct TIME *diff);
@@ -82,9 +84,9 @@ static struct dc_application_settings *create_settings(const struct dc_posix_env
     static const char *default_ip = "IPv4";
     static const uint16_t default_port = DEFAULT_ECHO_PORT;
     static const uint16_t default_Packet_SIZE = 100;
-    static const uint16_t default_Packet_number = 100;
-    static const uint16_t default_Starting_time = NULL;
-    static const uint16_t default_Delay = 40;
+    static const uint16_t default_Packet_number = 10;
+    static const uint16_t default_Starting_time = 0;
+    static const uint16_t default_Delay = 50;
     struct application_settings *settings;
 
     settings = dc_malloc(env, err, sizeof(struct application_settings));
@@ -160,6 +162,8 @@ static int run(const struct dc_posix_env *env, __attribute__ ((unused)) struct d
     const char *starting_time;
     const char *ip_version;
     in_port_t port;
+    uint16_t Packet_Size;
+    uint16_t Packet_Number;
     int ret_val;
     struct addrinfo hints;
     struct addrinfo *result;
@@ -176,6 +180,8 @@ static int run(const struct dc_posix_env *env, __attribute__ ((unused)) struct d
     ip_version = dc_setting_regex_get(env, app_settings->ip_version);
     port = dc_setting_uint16_get(env, app_settings->port);
     starting_time = dc_setting_string_get(env, app_settings->starting_time);
+    Packet_Size = dc_setting_uint16_get(env, app_settings->packet_size);
+    Packet_Number = dc_setting_uint16_get(env, app_settings->packet_number);
     ret_val = 0;
 
     if (verbose) {
@@ -237,86 +243,32 @@ static int run(const struct dc_posix_env *env, __attribute__ ((unused)) struct d
         return -1;
     }
 
-///////////////////////////////////////////
-    struct TIME startTime, stopTime, diff;
+    // Calculated_starting_time
+    int Calculated_starting_time = 0;
 
-    int comming_time[2];
-    int current_hr, current_mn, i = 0;
-    char str[] = "strtok needs to be called several times to split a string";
-    int init_size = strlen(starting_time);
-    char delim[] = ":";
-
-    char *ptr = strtok(starting_time, delim);
-
-    while (ptr != NULL) {
-        printf("%s\n", ptr);
-        comming_time[i] = atoi(ptr);
-        ptr = strtok(NULL, delim);
-        i++;
+    if (strcmp(starting_time, "") != 0) {
+        Calculated_starting_time = Calculate_starting_time(starting_time);
     }
-    startTime.hours = comming_time[0];
-    startTime.minutes = comming_time[1];
-    startTime.seconds = 0;
 
-    time_t rawtime;
-    struct tm *timeinfo;
-    time(&rawtime);
-    timeinfo = localtime(&rawtime);
-    current_hr = timeinfo->tm_hour;
-    current_mn = timeinfo->tm_min;
-    printf("%d:%d\n", current_hr, current_mn);
-    printf("comming: %d:%d\n", comming_time[0], comming_time[1]);
-
-
-    stopTime.hours = current_hr;
-    stopTime.minutes = current_mn;
-    stopTime.seconds = 0;
-
-    int rt;
-
-    rt = differenceBetweenTimePeriod(startTime, stopTime, &diff);
-    printf("\nTime Difference: %d:%d:%d - ", startTime.hours,
-           startTime.minutes,
-           startTime.seconds);
-    printf("%d:%d:%d ", stopTime.hours,
-           stopTime.minutes,
-           stopTime.seconds);
-    printf("= %d:%d:%d\n", diff.hours,
-           diff.minutes,
-           diff.seconds);
-    printf("= %d:\n", rt);
-
-    ///////////////////////////////////
     if (dc_error_has_no_error(err)) {
         char buff[MAX];
         int n;
-        for (;;) {
-            bzero(buff, sizeof(buff));
-            printf("\nEnter the string : ");
-            n = 0;
-            while ((buff[n++] = getchar()) != '\n');
-            // write(sock_fd, buff, sizeof(buff));
-            dc_write(env, err, sock_fd, buff, sizeof(buff));
+        bzero(buff, sizeof(buff));
+        char *str;
 
 
-            if ((strncmp(buff, "exit", 4)) == 0) {
-                printf("Client Exit...\n");
-                break;
-            }
+        str = strdup("");
+        sprintf(str, "%d %d %d%c", Calculated_starting_time, Packet_Size, Packet_Number, '\0');
 
-            bzero(buff, sizeof(buff));
+        dc_write(env, err, sock_fd, str, strlen(str) + 1);
+        read(sock_fd, buff, sizeof(buff));
 
-            sleep(3);
+        bzero(buff, sizeof(buff));
+        sleep((unsigned int) Calculated_starting_time);
+        UDP_client(env, err, settings);
 
-//        strncpy(buff, "exit", 4);
-//        write(sockfd, buff, sizeof(buff));
-
-            read(sock_fd, buff, sizeof(buff));
-            printf("From Server : %s", buff);
-
-
-            UDP_client(env, err, settings);
-        }
+        dc_write(env, err, sock_fd, "exit", sizeof("exit"));
+        read(sock_fd, buff, sizeof(buff));
     }
     return ret_val;
 }
@@ -327,6 +279,8 @@ int UDP_client(const struct dc_posix_env *env, __attribute__ ((unused)) struct d
                struct dc_application_settings *settings) {
     struct application_settings *app_settings;
     uint16_t delay;
+    uint16_t packet_size;
+    uint16_t packet_number;
     const char *hostname;
     in_port_t port;
 
@@ -334,11 +288,20 @@ int UDP_client(const struct dc_posix_env *env, __attribute__ ((unused)) struct d
     port = dc_setting_uint16_get(env, app_settings->port);
     hostname = dc_setting_string_get(env, app_settings->hostname);
     delay = dc_setting_uint16_get(env, app_settings->delay);
+    packet_size = dc_setting_uint16_get(env, app_settings->packet_size);
+    packet_number = dc_setting_uint16_get(env, app_settings->packet_number);
 
     int sockfd;
     char buffer[MAXLINE];
-    char *hello = "Hello from client";
-    char *bye = "bye";
+    char *str;
+
+    /* Initial memory allocation */
+    str = (char *) malloc(packet_size);
+    strcpy(str, "Hello");
+
+    printf("strlen: %lu, sizeoff: %lu.\n", strlen(str), sizeof(str));
+
+
     struct sockaddr_in servaddr;
 
     // Creating socket file descriptor
@@ -356,38 +319,55 @@ int UDP_client(const struct dc_posix_env *env, __attribute__ ((unused)) struct d
 
     inet_pton(AF_INET, hostname, &servaddr.sin_addr);
 
-    time_t rawtime;
-    struct tm *timeinfo;
-    time(&rawtime);
-    timeinfo = localtime(&rawtime);
-    printf("\n\n%02d:%02d:%02d\n\n", timeinfo->tm_hour, timeinfo->tm_min,
-           timeinfo->tm_sec);
-
     int n, len;
+    struct timespec ts;
+    ts.tv_sec = 0;
+    ts.tv_nsec = delay * 10000000;
 
-    for (int i = 0; i < 5; ++i) {
-        sendto(sockfd, (const char *) hello, strlen(hello),
+    for (int i = 0; i < packet_number; ++i) {
+        sendto(sockfd, (const char *) str, strlen(str),
                MSG_CONFIRM, (const struct sockaddr *) &servaddr,
                sizeof(servaddr));
         printf("Hello message sent.\n");
-        sleep(delay);
+        nanosleep(&ts, NULL);
     }
-    sendto(sockfd, (const char *) bye, strlen(bye),
-           MSG_CONFIRM, (const struct sockaddr *) &servaddr,
-           sizeof(servaddr));
-    printf("bye.\n");
-
-
-//    n = recvfrom(sockfd, (char *) buffer, MAXLINE,
-//                 MSG_WAITALL, (struct sockaddr *) &servaddr,
-//                 &len);
-//    buffer[n] = '\0';
-//    printf("Server UDP: %s\n", buffer);
-
     close(sockfd);
     return 0;
 }
 
+int Calculate_starting_time(char *starting_time) {
+    struct TIME startTime, stopTime, diff;
+
+    int comming_time[2];
+    int current_hr, current_mn, i = 0;
+    char delim[] = ":";
+
+    char *ptr = strtok(starting_time, delim);
+
+    while (ptr != NULL) {
+        comming_time[i] = atoi(ptr);
+        ptr = strtok(NULL, delim);
+        i++;
+    }
+    startTime.hours = comming_time[0];
+    startTime.minutes = comming_time[1];
+    startTime.seconds = 0;
+
+    time_t rawtime;
+    struct tm *timeinfo;
+    time(&rawtime);
+    timeinfo = localtime(&rawtime);
+    current_hr = timeinfo->tm_hour;
+    current_mn = timeinfo->tm_min;
+
+    stopTime.hours = current_hr;
+    stopTime.minutes = current_mn;
+    stopTime.seconds = 0;
+
+    int rt;
+    rt = differenceBetweenTimePeriod(startTime, stopTime, &diff);
+    return rt;
+}
 
 int differenceBetweenTimePeriod(struct TIME start,
                                 struct TIME stop,
