@@ -2,7 +2,7 @@
 #define DC_ECHO_ECHO_H
 
 
-#define DEFAULT_ECHO_PORT 4981
+#define DEFAULT_ECHO_PORT 4982
 
 
 #endif // DC_ECHO_ECHO_H

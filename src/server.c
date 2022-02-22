@@ -363,10 +363,14 @@ void *UDP(void *arg) {
     struct application_settings *app_settings;
     const char *hostname;
     in_port_t port;
-
     app_settings = arg;
+    int numbers[app_settings->packet_number];
     dc_posix_tracer tracer;
     struct dc_posix_env env;
+    char delim[] = " ";
+
+    uint16_t packet_number;
+
 
     tracer = NULL;
     dc_posix_env_init(&env, tracer);
@@ -414,7 +418,7 @@ void *UDP(void *arg) {
     flags |= O_NONBLOCK;
     fcntl(sockfd, F_SETFL, flags);
 
-
+    int i = 0;
     while (fuel == 0) {
         n = recvfrom(sockfd, (char *) buffer, MAXLINE,
                      MSG_WAITALL, (struct sockaddr *) &cliaddr,
@@ -426,9 +430,26 @@ void *UDP(void *arg) {
 //               MSG_CONFIRM, (const struct sockaddr *) &cliaddr,
 //               len);
             //   pthread_mutex_init(&mutexFuel, NULL);
+            char *ptr = strtok(buffer, delim);
+            packet_number = (uint16_t) atoi(ptr);
+            numbers[i] = packet_number;
+            i++;
             counter++;
         }
     }
+
+    printf("IP address is: %s\n", inet_ntoa(cliaddr.sin_addr));
+    printf("port is: %d\n", (int) ntohs(cliaddr.sin_port));
+
+
+    int arrLen = sizeof numbers / sizeof numbers[0];
+
+    i = 0;
+    while (i < arrLen) {
+        printf("%d\n", numbers[i]);
+        i++;
+    }
+
 
     printf("\nUDP Exit...\n");
     return NULL;
