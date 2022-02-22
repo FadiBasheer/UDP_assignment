@@ -48,6 +48,8 @@ static int run(const struct dc_posix_env *env, struct dc_error *err, struct dc_a
 
 static void signal_handler(int signnum);
 
+int stastic(int *numbers, int size, void *arg);
+
 static void do_create_settings(const struct dc_posix_env *env, struct dc_error *err, void *arg);
 
 static void do_create_socket(const struct dc_posix_env *env, struct dc_error *err, void *arg);
@@ -441,18 +443,25 @@ void *UDP(void *arg) {
     printf("IP address is: %s\n", inet_ntoa(cliaddr.sin_addr));
     printf("port is: %d\n", (int) ntohs(cliaddr.sin_port));
 
+    stastic(numbers, i, arg);
+    sleep(2);
+    printf("\nUDP Exit...\n");
 
-    int arrLen = sizeof numbers / sizeof numbers[0];
+    return NULL;
+}
 
-    i = 0;
-    while (i < arrLen) {
-        printf("%d\n", numbers[i]);
+int stastic(int *numbers, int size, void *arg) {
+    struct application_settings *app_settings;
+    const char *hostname;
+    in_port_t port;
+    app_settings = arg;
+
+    int i = 0;
+    while (i < size) {
+        printf("hhhhhhhhhhhhhhhhhhhhh: %d\n", numbers[i]);
         i++;
     }
-
-
-    printf("\nUDP Exit...\n");
-    return NULL;
+    return 0;
 }
 
 
