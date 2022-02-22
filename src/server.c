@@ -23,6 +23,12 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <err.h>
+#include <syslog.h>
+
+#define _OPEN_SYS_SOCK_IPV6
+
+#include <sys/socket.h>
+#include <netdb.h>
 
 
 #define MAXLINE 1024
@@ -370,8 +376,10 @@ void *UDP(void *arg) {
     dc_posix_tracer tracer;
     struct dc_posix_env env;
     char delim[] = " ";
-
     uint16_t packet_number;
+
+    FILE *fp;
+    fp = fopen("data.log", "w");
 
 
     tracer = NULL;
@@ -428,6 +436,8 @@ void *UDP(void *arg) {
         if (n != -1) {
             buffer[n] = '\0';
             printf("Client : %s\n", buffer);
+            fprintf(fp, "%s\n", buffer);
+
 //        sendto(sockfd, (const char *) hello, strlen(hello),
 //               MSG_CONFIRM, (const struct sockaddr *) &cliaddr,
 //               len);
@@ -489,10 +499,23 @@ static bool do_accept(const struct dc_posix_env *env, struct dc_error *err, int 
     uint16_t packet_Size;
     uint16_t starting_time;
 
+
+    struct sockaddr *addr;     /* input */
+    socklen_t addrlen;         /* input */
+    char hbuf[50], sbuf[50];
+
+
     while (1) {
         printf("accepting\n");
 
         *client_socket_fd = dc_network_accept(env, err, app_settings->server_socket_fd);
+
+
+        if (getnameinfo(app_settings->address->ai_addr, app_settings->address->ai_addrlen, hbuf, sizeof(hbuf), sbuf,
+                        sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV) == 0)
+            printf("host=%s, port=%s\n", hbuf, sbuf);
+
+
 
         if (*client_socket_fd < 0) {
             exit(1);
