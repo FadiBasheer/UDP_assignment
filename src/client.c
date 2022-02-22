@@ -40,9 +40,9 @@ struct TIME {
 int UDP_client(const struct dc_posix_env *env, __attribute__ ((unused)) struct dc_error *err,
                struct dc_application_settings *settings);
 
-int Calculate_starting_time(char *starting_time);
+uint16_t Calculate_starting_time(char *starting_time);
 
-int differenceBetweenTimePeriod(struct TIME start,
+uint16_t differenceBetweenTimePeriod(struct TIME start,
                                 struct TIME stop,
                                 struct TIME *diff);
 
@@ -244,7 +244,7 @@ static int run(const struct dc_posix_env *env, __attribute__ ((unused)) struct d
     }
 
     // Calculated_starting_time
-    int Calculated_starting_time = 0;
+    uint16_t Calculated_starting_time = 0;
 
     if (strcmp(starting_time, "") != 0) {
         Calculated_starting_time = Calculate_starting_time(starting_time);
@@ -297,10 +297,6 @@ int UDP_client(const struct dc_posix_env *env, __attribute__ ((unused)) struct d
 
     /* Initial memory allocation */
     str = (char *) malloc(packet_size);
-    strcpy(str, "Hello");
-
-    printf("strlen: %lu, sizeoff: %lu.\n", strlen(str), sizeof(str));
-
 
     struct sockaddr_in servaddr;
 
@@ -325,6 +321,7 @@ int UDP_client(const struct dc_posix_env *env, __attribute__ ((unused)) struct d
     ts.tv_nsec = delay * 10000000;
 
     for (int i = 0; i < packet_number; ++i) {
+        sprintf(str, "%d %s%c", i, "hello", '\0');
         sendto(sockfd, (const char *) str, strlen(str),
                MSG_CONFIRM, (const struct sockaddr *) &servaddr,
                sizeof(servaddr));
@@ -335,7 +332,7 @@ int UDP_client(const struct dc_posix_env *env, __attribute__ ((unused)) struct d
     return 0;
 }
 
-int Calculate_starting_time(char *starting_time) {
+uint16_t Calculate_starting_time(char *starting_time) {
     struct TIME startTime, stopTime, diff;
 
     int comming_time[2];
@@ -364,21 +361,21 @@ int Calculate_starting_time(char *starting_time) {
     stopTime.minutes = current_mn;
     stopTime.seconds = 0;
 
-    int rt;
+    uint16_t rt;
     rt = differenceBetweenTimePeriod(startTime, stopTime, &diff);
     return rt;
 }
 
-int differenceBetweenTimePeriod(struct TIME start,
+uint16_t differenceBetweenTimePeriod(struct TIME start,
                                 struct TIME stop,
                                 struct TIME *diff) {
-    int s;
+    uint16_t s;
     while (stop.seconds > start.seconds) {
         --start.minutes;
         start.seconds += 60;
     }
     diff->seconds = start.seconds - stop.seconds;
-    s = diff->seconds;
+    s = (uint16_t) diff->seconds;
     while (stop.minutes > start.minutes) {
         --start.hours;
         start.minutes += 60;

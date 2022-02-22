@@ -35,6 +35,7 @@ struct application_settings {
     struct dc_setting_bool *reuse_address;
     struct addrinfo *address;
     int server_socket_fd;
+    uint16_t packet_number;
 };
 
 static struct dc_application_settings *create_settings(const struct dc_posix_env *env, struct dc_error *err);
@@ -318,7 +319,7 @@ pthread_cond_t condFuel;
 int fuel = 0;
 int counter = 0;
 
-void *fuel_filling(void *arg) {
+void *TCP(void *arg) {
     printf("TCCCCCCCCCCCCCCCCCCCCCCCCppppppppp\n");
     int *connfd = (int *) arg;
     char buff[MAX];
@@ -357,7 +358,7 @@ void *fuel_filling(void *arg) {
 }
 
 
-void *car(void *arg) {
+void *UDP(void *arg) {
     struct application_settings *app_settings;
     const char *hostname;
     in_port_t port;
@@ -375,7 +376,9 @@ void *car(void *arg) {
     port = dc_setting_uint16_get(&env, app_settings->port);
 
     int sockfd;
+
     char buffer[MAXLINE];
+
     char *hello = "Hello from server";
     struct sockaddr_in servaddr, cliaddr;
 
@@ -423,11 +426,11 @@ void *car(void *arg) {
 //        sendto(sockfd, (const char *) hello, strlen(hello),
 //               MSG_CONFIRM, (const struct sockaddr *) &cliaddr,
 //               len);
-            printf("Hello message sent.\n");
             //   pthread_mutex_init(&mutexFuel, NULL);
             counter++;
         }
     }
+
     printf("\nUDP Exit...\n");
     return NULL;
 }
@@ -444,23 +447,18 @@ static size_t count(const char *str, int c) {
     return num;
 }
 
-int sockfd, newsockfd, portno, clilen;
-char buffer[256];
-struct sockaddr_in serv_addr, cli_addr;
-
 static bool do_accept(const struct dc_posix_env *env, struct dc_error *err, int *client_socket_fd, void *arg) {
     struct application_settings *app_settings;
-    bool ret_val;
+    app_settings = (struct application_settings *) arg;
 
+    bool ret_val;
     DC_TRACE(env);
     app_settings = arg;
     ret_val = false;
     int pid;
 
-    char buffer[1024];
-
-    listen(sockfd, 5);
-    clilen = sizeof(cli_addr);
+    uint16_t packet_Size;
+    uint16_t starting_time;
 
     while (1) {
         printf("accepting\n");
@@ -491,30 +489,42 @@ static bool do_accept(const struct dc_posix_env *env, struct dc_error *err, int 
                 printf("From client TCP: %s\n", buff);
                 write(*client_socket_fd, "ok", sizeof("ok"));
 
-                if (strncmp("exit", buff, 4) == 0) {
-                    printf("\nServer Exit TCP 1111111\n");
-                    fuel = 1;
-                } else {
-                    pthread_t thread_1, thread_2;
-                    //pthread_mutex_init(&mutexFuel, NULL);
-                    //pthread_cond_init(&condFuel, NULL);
 
-                    if (pthread_create(&thread_1, NULL, &fuel_filling, client_socket_fd) != 0) {
-                        perror("Failed to create thread");
-                    }
+                char delim[] = " ";
 
-                    uint16_t port_number = dc_setting_uint16_get(env, app_settings->port);
+                char *ptr = strtok(buff, delim);
+                starting_time = (uint16_t) atoi(ptr);
+                printf("starting_time: %hu\n", starting_time);
 
-                    if (pthread_create(&thread_2, NULL, &car, arg) != 0) {
-                        perror("Failed to create thread");
-                    }
-                    pthread_join(thread_1, NULL);
-                    pthread_join(thread_2, NULL);
+                ptr = strtok(NULL, delim);
+                packet_Size = (uint16_t) atoi(ptr);
+                printf("packet_Size: %hu\n", packet_Size);
+
+                ptr = strtok(NULL, delim);
+                app_settings->packet_number = (uint16_t) atoi(ptr);
+                printf("app_settings->packet_number: %hu\n", app_settings->packet_number);
+
+
+                pthread_t thread_1, thread_2;
+                //pthread_mutex_init(&mutexFuel, NULL);
+                //pthread_cond_init(&condFuel, NULL);
+
+                if (pthread_create(&thread_1, NULL, &TCP, client_socket_fd) != 0) {
+                    perror("Failed to create thread");
+                }
+
+                uint16_t port_number = dc_setting_uint16_get(env, app_settings->port);
+
+                if (pthread_create(&thread_2, NULL, &UDP, arg) != 0) {
+                    perror("Failed to create thread");
+                }
+                pthread_join(thread_1, NULL);
+                pthread_join(thread_2, NULL);
 
 //                    pthread_mutex_destroy(&mutexFuel);
 //                    pthread_cond_destroy(&condFuel);
-                    printf("end child\n");
-                }
+                printf("end child\n");
+
             }
             exit(0);
         } else {
