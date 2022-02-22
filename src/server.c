@@ -22,6 +22,7 @@
 #include <wait.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <err.h>
 
 
 #define MAXLINE 1024
@@ -364,11 +365,9 @@ void *UDP(void *arg) {
     in_port_t port;
 
     app_settings = arg;
-    //uint16_t *port = (uint16_t *) arg;
     dc_posix_tracer tracer;
     struct dc_posix_env env;
 
-    tracer = dc_posix_default_tracer;
     tracer = NULL;
     dc_posix_env_init(&env, tracer);
 
@@ -379,8 +378,9 @@ void *UDP(void *arg) {
 
     char buffer[MAXLINE];
 
-    char *hello = "Hello from server";
     struct sockaddr_in servaddr, cliaddr;
+
+    printf("app_settings->address: %d\n", dc_network_create_socket(&env, err, app_settings->address));
 
 
     // Creating socket file descriptor
@@ -405,11 +405,10 @@ void *UDP(void *arg) {
         perror("bind failed");
         exit(EXIT_FAILURE);
     }
+
     ssize_t len, n;
 
-    len = sizeof(cliaddr);  //len is value/resuslt
-
-
+    len = sizeof(cliaddr);
 
     int flags = fcntl(sockfd, F_GETFL);
     flags |= O_NONBLOCK;

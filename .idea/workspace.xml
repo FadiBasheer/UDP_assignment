@@ -44,7 +44,6 @@
   <component name="ChangeListManager">
     <list default="true" id="c7dd555e-e380-466e-b186-c457c763c7ae" name="Changes" comment="first">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/client.c" beforeDir="false" afterPath="$PROJECT_DIR$/src/client.c" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/server.c" beforeDir="false" afterPath="$PROJECT_DIR$/src/server.c" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -69,6 +68,9 @@
   </component>
   <component name="MarkdownSettingsMigration">
     <option name="stateVersion" value="1" />
+  </component>
+  <component name="OCResolveContextSettings">
+    <option name="configuration" value="0-Debug-server" />
   </component>
   <component name="ProjectApplicationVersion">
     <option name="ide" value="CLion" />
@@ -314,7 +316,7 @@
       <workItem from="1645316879599" duration="15589000" />
       <workItem from="1645349372297" duration="36082000" />
       <workItem from="1645464715004" duration="1410000" />
-      <workItem from="1645466670692" duration="26977000" />
+      <workItem from="1645466670692" duration="28129000" />
     </task>
     <task id="LOCAL-00001" summary="first">
       <created>1645484480509</created>
@@ -323,7 +325,14 @@
       <option name="project" value="LOCAL" />
       <updated>1645484480509</updated>
     </task>
-    <option name="localTasksCounter" value="2" />
+    <task id="LOCAL-00002" summary="first">
+      <created>1645497215721</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1645497215721</updated>
+    </task>
+    <option name="localTasksCounter" value="3" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
