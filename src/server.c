@@ -61,8 +61,6 @@ static void do_shutdown(const struct dc_posix_env *env, struct dc_error *err, vo
 
 static void do_destroy_settings(const struct dc_posix_env *env, struct dc_error *err, void *arg);
 
-void echo(const struct dc_posix_env *env, struct dc_error *err, int client_socket_fd);
-
 
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 static volatile sig_atomic_t exit_signal = 0;
@@ -200,7 +198,6 @@ static int run(const struct dc_posix_env *env, __attribute__ ((unused)) struct d
         dc_server_run(env, err, info, create_server_lifecycle, destroy_server_lifecycle);
         dc_server_info_destroy(env, &info);
     }
-
     if (dc_error_has_no_error(err)) {
         ret_val = 0;
     } else {
@@ -417,11 +414,6 @@ static bool do_accept(const struct dc_posix_env *env, struct dc_error *err, int 
 
         *client_socket_fd = dc_network_accept(env, err, app_settings->server_socket_fd);
 
-
-//        if (getnameinfo(app_settings->address->ai_addr, app_settings->address->ai_addrlen, hbuf, sizeof(hbuf), sbuf,
-//                        sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV) == 0)
-//            printf("host=%s, port=%s\n", hbuf, sbuf);
-
         if (*client_socket_fd < 0) {
             exit(1);
         }
@@ -445,7 +437,6 @@ static bool do_accept(const struct dc_posix_env *env, struct dc_error *err, int 
                 read(*client_socket_fd, buff, sizeof(buff));
                 printf("From client TCP: %s\n", buff);
                 write(*client_socket_fd, "ok", sizeof("ok"));
-
 
                 char delim[] = " ";
 
