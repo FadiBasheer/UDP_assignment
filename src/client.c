@@ -43,8 +43,8 @@ int UDP_client(const struct dc_posix_env *env, __attribute__ ((unused)) struct d
 uint16_t Calculate_starting_time(char *starting_time);
 
 uint16_t differenceBetweenTimePeriod(struct TIME start,
-                                struct TIME stop,
-                                struct TIME *diff);
+                                     struct TIME stop,
+                                     struct TIME *diff);
 
 static struct dc_application_settings *create_settings(const struct dc_posix_env *env, struct dc_error *err);
 
@@ -63,7 +63,6 @@ int main(int argc, char *argv[]) {
     int ret_val;
 
     tracer = dc_posix_default_tracer;
-//    tracer = NULL;
     dc_posix_env_init(&env, tracer);
     reporter = dc_error_default_error_reporter;
     dc_error_init(&err, reporter);
@@ -83,7 +82,7 @@ static struct dc_application_settings *create_settings(const struct dc_posix_env
     static const char *default_hostname = "localhost";
     static const char *default_ip = "IPv4";
     static const uint16_t default_port = DEFAULT_ECHO_PORT;
-    static const uint16_t default_Packet_SIZE = 100;
+    static const uint16_t default_Packet_SIZE = 25;
     static const uint16_t default_Packet_number = 10;
     static const uint16_t default_Starting_time = 0;
     static const uint16_t default_Delay = 50;
@@ -149,7 +148,6 @@ static int destroy_settings(const struct dc_posix_env *env, __attribute__ ((unus
     if (env->null_free) {
         *psettings = NULL;
     }
-
     return 0;
 }
 
@@ -252,29 +250,34 @@ static int run(const struct dc_posix_env *env, __attribute__ ((unused)) struct d
 
     if (dc_error_has_no_error(err)) {
         char buff[MAX];
-        int n;
-        bzero(buff, sizeof(buff));
         char *str;
-
+        memset(buff, 0, MAX);
 
         str = strdup("");
         sprintf(str, "%d %d %d%c", Calculated_starting_time, Packet_Size, Packet_Number, '\0');
 
+        // Sending first message
         dc_write(env, err, sock_fd, str, strlen(str) + 1);
         read(sock_fd, buff, sizeof(buff));
 
-        bzero(buff, sizeof(buff));
+        memset(buff, 0, MAX);
+
+        // Waiting until the time specified
         sleep((unsigned int) Calculated_starting_time);
+
+        // Run UDP
         UDP_client(env, err, settings);
 
+        // Sending final message to tell the server that the client is done
         dc_write(env, err, sock_fd, "exit", sizeof("exit"));
         read(sock_fd, buff, sizeof(buff));
     }
     return ret_val;
 }
 
-
-// Driver code
+/*
+ * UDP part
+ */
 int UDP_client(const struct dc_posix_env *env, __attribute__ ((unused)) struct dc_error *err,
                struct dc_application_settings *settings) {
     struct application_settings *app_settings;
@@ -292,11 +295,13 @@ int UDP_client(const struct dc_posix_env *env, __attribute__ ((unused)) struct d
     packet_number = dc_setting_uint16_get(env, app_settings->packet_number);
 
     int sockfd;
-    char buffer[MAXLINE];
     char *str;
 
     /* Initial memory allocation */
     str = (char *) malloc(packet_size);
+    char *temp[packet_size - 3];
+    memset(temp, '1', packet_size - 3);
+
 
     struct sockaddr_in servaddr;
 
@@ -311,27 +316,25 @@ int UDP_client(const struct dc_posix_env *env, __attribute__ ((unused)) struct d
     // Filling server information
     servaddr.sin_family = AF_INET;
     servaddr.sin_port = htons(port);
-    // servaddr.sin_addr.s_addr = INADDR_ANY;
-
     inet_pton(AF_INET, hostname, &servaddr.sin_addr);
 
-    int n, len;
     struct timespec ts;
     ts.tv_sec = 0;
     ts.tv_nsec = delay * 10000000;
 
     for (int i = 0; i < packet_number; ++i) {
-        sprintf(str, "%d %s%c", i, "hello", '\0');
+        sprintf(str, "%d %s%c", i, temp, '\0');
         sendto(sockfd, (const char *) str, strlen(str),
                MSG_CONFIRM, (const struct sockaddr *) &servaddr,
                sizeof(servaddr));
-        printf("Hello message sent.\n");
+        printf("Sending: %s\n", str);
         nanosleep(&ts, NULL);
     }
     close(sockfd);
     return 0;
 }
 
+//Calculating the starting time
 uint16_t Calculate_starting_time(char *starting_time) {
     struct TIME startTime, stopTime, diff;
 
@@ -367,8 +370,8 @@ uint16_t Calculate_starting_time(char *starting_time) {
 }
 
 uint16_t differenceBetweenTimePeriod(struct TIME start,
-                                struct TIME stop,
-                                struct TIME *diff) {
+                                     struct TIME stop,
+                                     struct TIME *diff) {
     uint16_t s;
     while (stop.seconds > start.seconds) {
         --start.minutes;

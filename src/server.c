@@ -54,8 +54,6 @@ static int run(const struct dc_posix_env *env, struct dc_error *err, struct dc_a
 
 static void signal_handler(int signnum);
 
-int stastic(int *numbers, int size, void *arg);
-
 static void do_create_settings(const struct dc_posix_env *env, struct dc_error *err, void *arg);
 
 static void do_create_socket(const struct dc_posix_env *env, struct dc_error *err, void *arg);
@@ -323,8 +321,6 @@ static void do_setup(const struct dc_posix_env *env, __attribute__ ((unused)) st
 }
 
 #define MAX 80
-pthread_mutex_t mutexFuel;
-pthread_cond_t condFuel;
 int fuel = 0;
 int counter = 0;
 
@@ -332,36 +328,21 @@ void *TCP(void *arg) {
     printf("TCCCCCCCCCCCCCCCCCCCCCCCCppppppppp\n");
     int *connfd = (int *) arg;
     char buff[MAX];
-
     for (;;) {
         bzero(buff, MAX);
 
-        // read the message from client and copy it in buffer
         read(*connfd, buff, sizeof(buff));
-        // print buffer which contains the client contents
         printf("From client TCP: %s\n", buff);
-        // bzero(buff, MAX);
-//        n = 0;
-//        // copy server message in the buffer
-//        while ((buff[n++] = getchar()) != '\n');
 
-        //  sleep(3);
-
-        // and send that buffer to client
-        //  write(connfd, buff, sizeof(buff));
-
-        // if msg contains "Exit" then server exit and chat ended.
         if (strncmp("exit", buff, 4) == 0) {
             printf("\nServer Exit...\n");
             write(*connfd, buff, sizeof(buff));
             fuel = 1;
             break;
         }
-        //  pthread_mutex_destroy(&mutexFuel);
         write(*connfd, buff, sizeof(buff));
         sleep(1);
     }
-    // write(*connfd, buff, sizeof(buff));
     printf("Counter: %d\n", counter);
     return NULL;
 }
@@ -379,7 +360,6 @@ void *UDP(void *arg) {
     uint16_t packet_number;
 
     FILE *fp;
-    fp = fopen("data.log", "w");
 
 
     tracer = NULL;
@@ -429,11 +409,16 @@ void *UDP(void *arg) {
     fcntl(sockfd, F_SETFL, flags);
 
     int i = 0;
+    int flag = 0;
     while (fuel == 0) {
         n = recvfrom(sockfd, (char *) buffer, MAXLINE,
                      MSG_WAITALL, (struct sockaddr *) &cliaddr,
                      (socklen_t *) &len);
         if (n != -1) {
+            if (flag == 0) {
+                fp = fopen(inet_ntoa(cliaddr.sin_addr), "w");
+                flag = 1;
+            }
             buffer[n] = '\0';
             printf("Client : %s\n", buffer);
             fprintf(fp, "%s\n", buffer);
@@ -453,27 +438,11 @@ void *UDP(void *arg) {
     printf("IP address is: %s\n", inet_ntoa(cliaddr.sin_addr));
     printf("port is: %d\n", (int) ntohs(cliaddr.sin_port));
 
-    stastic(numbers, i, arg);
     sleep(2);
     printf("\nUDP Exit...\n");
 
     return NULL;
 }
-
-int stastic(int *numbers, int size, void *arg) {
-    struct application_settings *app_settings;
-    const char *hostname;
-    in_port_t port;
-    app_settings = arg;
-
-    int i = 0;
-    while (i < size) {
-        printf("hhhhhhhhhhhhhhhhhhhhh: %d\n", numbers[i]);
-        i++;
-    }
-    return 0;
-}
-
 
 static size_t count(const char *str, int c) {
     size_t num;
@@ -499,9 +468,6 @@ static bool do_accept(const struct dc_posix_env *env, struct dc_error *err, int 
     uint16_t packet_Size;
     uint16_t starting_time;
 
-
-    struct sockaddr *addr;     /* input */
-    socklen_t addrlen;         /* input */
     char hbuf[50], sbuf[50];
 
 
@@ -511,10 +477,9 @@ static bool do_accept(const struct dc_posix_env *env, struct dc_error *err, int 
         *client_socket_fd = dc_network_accept(env, err, app_settings->server_socket_fd);
 
 
-        if (getnameinfo(app_settings->address->ai_addr, app_settings->address->ai_addrlen, hbuf, sizeof(hbuf), sbuf,
-                        sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV) == 0)
-            printf("host=%s, port=%s\n", hbuf, sbuf);
-
+//        if (getnameinfo(app_settings->address->ai_addr, app_settings->address->ai_addrlen, hbuf, sizeof(hbuf), sbuf,
+//                        sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV) == 0)
+//            printf("host=%s, port=%s\n", hbuf, sbuf);
 
 
         if (*client_socket_fd < 0) {
@@ -558,8 +523,6 @@ static bool do_accept(const struct dc_posix_env *env, struct dc_error *err, int 
 
 
                 pthread_t thread_1, thread_2;
-                //pthread_mutex_init(&mutexFuel, NULL);
-                //pthread_cond_init(&condFuel, NULL);
 
                 if (pthread_create(&thread_1, NULL, &TCP, client_socket_fd) != 0) {
                     perror("Failed to create thread");
@@ -573,8 +536,6 @@ static bool do_accept(const struct dc_posix_env *env, struct dc_error *err, int 
                 pthread_join(thread_1, NULL);
                 pthread_join(thread_2, NULL);
 
-//                    pthread_mutex_destroy(&mutexFuel);
-//                    pthread_cond_destroy(&condFuel);
                 printf("end child\n");
 
             }

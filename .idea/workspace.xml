@@ -44,6 +44,7 @@
   <component name="ChangeListManager">
     <list default="true" id="c7dd555e-e380-466e-b186-c457c763c7ae" name="Changes" comment="first">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/client.c" beforeDir="false" afterPath="$PROJECT_DIR$/src/client.c" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/server.c" beforeDir="false" afterPath="$PROJECT_DIR$/src/server.c" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -97,7 +98,7 @@
       <recent name="$PROJECT_DIR$/src" />
     </key>
   </component>
-  <component name="RunManager" selected="CMake Application.server">
+  <component name="RunManager" selected="CMake Application.client">
     <configuration name="Continuous" type="CMakeRunConfiguration" factoryName="Application" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="UDP_assignment" TARGET_NAME="Continuous" CONFIG_NAME="Debug">
       <method v="2">
         <option name="com.jetbrains.cidr.execution.CidrBuildBeforeRunTaskProvider$BuildBeforeRunTask" enabled="true" />
@@ -313,7 +314,8 @@
       <workItem from="1645316879599" duration="15589000" />
       <workItem from="1645349372297" duration="36082000" />
       <workItem from="1645464715004" duration="1410000" />
-      <workItem from="1645466670692" duration="46051000" />
+      <workItem from="1645466670692" duration="46147000" />
+      <workItem from="1645578928551" duration="8544000" />
     </task>
     <task id="LOCAL-00001" summary="first">
       <created>1645484480509</created>
@@ -350,7 +352,14 @@
       <option name="project" value="LOCAL" />
       <updated>1645550428673</updated>
     </task>
-    <option name="localTasksCounter" value="6" />
+    <task id="LOCAL-00006" summary="first">
+      <created>1645558162417</created>
+      <option name="number" value="00006" />
+      <option name="presentableId" value="LOCAL-00006" />
+      <option name="project" value="LOCAL" />
+      <updated>1645558162417</updated>
+    </task>
+    <option name="localTasksCounter" value="7" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
