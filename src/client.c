@@ -83,7 +83,7 @@ static struct dc_application_settings *create_settings(const struct dc_posix_env
     static const char *default_ip = "IPv4";
     static const uint16_t default_port = DEFAULT_ECHO_PORT;
     static const uint16_t default_Packet_SIZE = 25;
-    static const uint16_t default_Packet_number = 10;
+    static const uint16_t default_Packet_number = 12;
     static const uint16_t default_Starting_time = 0;
     static const uint16_t default_Delay = 50;
     struct application_settings *settings;

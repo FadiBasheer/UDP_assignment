@@ -99,6 +99,11 @@
     </key>
   </component>
   <component name="RunManager" selected="CMake Application.client">
+    <configuration default="true" type="CLionExternalRunConfiguration" factoryName="Application" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" PASS_PARENT_ENVS_2="true">
+      <method v="2">
+        <option name="CLION.EXTERNAL.BUILD" enabled="true" />
+      </method>
+    </configuration>
     <configuration name="Continuous" type="CMakeRunConfiguration" factoryName="Application" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="UDP_assignment" TARGET_NAME="Continuous" CONFIG_NAME="Debug">
       <method v="2">
         <option name="com.jetbrains.cidr.execution.CidrBuildBeforeRunTaskProvider$BuildBeforeRunTask" enabled="true" />
@@ -315,7 +320,7 @@
       <workItem from="1645349372297" duration="36082000" />
       <workItem from="1645464715004" duration="1410000" />
       <workItem from="1645466670692" duration="46147000" />
-      <workItem from="1645578928551" duration="8544000" />
+      <workItem from="1645578928551" duration="12337000" />
     </task>
     <task id="LOCAL-00001" summary="first">
       <created>1645484480509</created>
@@ -359,7 +364,14 @@
       <option name="project" value="LOCAL" />
       <updated>1645558162417</updated>
     </task>
-    <option name="localTasksCounter" value="7" />
+    <task id="LOCAL-00007" summary="first">
+      <created>1645587566555</created>
+      <option name="number" value="00007" />
+      <option name="presentableId" value="LOCAL-00007" />
+      <option name="project" value="LOCAL" />
+      <updated>1645587566555</updated>
+    </task>
+    <option name="localTasksCounter" value="8" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">

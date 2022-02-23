@@ -8,28 +8,17 @@
 #include <dc_posix/dc_netdb.h>
 #include <dc_posix/dc_signal.h>
 #include <dc_posix/dc_string.h>
-#include <dc_posix/sys/dc_socket.h>
 #include <dc_util/dump.h>
 #include <dc_util/streams.h>
-#include <dc_util/types.h>
 #include <getopt.h>
 #include <pthread.h>
 #include <unistd.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
-#include <error.h>
 #include <asm-generic/socket.h>
 #include <wait.h>
-#include <unistd.h>
 #include <fcntl.h>
-#include <err.h>
-#include <syslog.h>
-
-#define _OPEN_SYS_SOCK_IPV6
-
-#include <sys/socket.h>
 #include <netdb.h>
-
 
 #define MAXLINE 1024
 
@@ -74,13 +63,6 @@ static void do_destroy_settings(const struct dc_posix_env *env, struct dc_error 
 
 void echo(const struct dc_posix_env *env, struct dc_error *err, int client_socket_fd);
 
-/*
-static void write_displayer(const struct dc_posix_env *env, struct dc_error *err, const uint8_t *data, size_t count,
-                            size_t file_position, void *arg);
-
-static void read_displayer(const struct dc_posix_env *env, struct dc_error *err, const uint8_t *data, size_t count,
-                           size_t file_position, void *arg);
-*/
 
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 static volatile sig_atomic_t exit_signal = 0;
@@ -294,10 +276,6 @@ static void do_bind(const struct dc_posix_env *env, struct dc_error *err, void *
     app_settings = arg;
     port = dc_setting_uint16_get(env, app_settings->port);
 
-
-//    int optval = 1;
-//    setsockopt(app_settings->server_socket_fd, SOL_SOCKET, SO_REUSEPORT, &optval, sizeof(optval));
-
     dc_network_bind(env,
                     err,
                     app_settings->server_socket_fd,
@@ -322,15 +300,12 @@ static void do_setup(const struct dc_posix_env *env, __attribute__ ((unused)) st
 
 #define MAX 80
 int fuel = 0;
-int counter = 0;
 
 void *TCP(void *arg) {
-    printf("TCCCCCCCCCCCCCCCCCCCCCCCCppppppppp\n");
     int *connfd = (int *) arg;
     char buff[MAX];
     for (;;) {
-        bzero(buff, MAX);
-
+        memset(buff, 0, MAX);
         read(*connfd, buff, sizeof(buff));
         printf("From client TCP: %s\n", buff);
 
@@ -343,24 +318,22 @@ void *TCP(void *arg) {
         write(*connfd, buff, sizeof(buff));
         sleep(1);
     }
-    printf("Counter: %d\n", counter);
     return NULL;
 }
 
 
 void *UDP(void *arg) {
     struct application_settings *app_settings;
-    const char *hostname;
-    in_port_t port;
-    app_settings = arg;
-    int numbers[app_settings->packet_number];
+    struct sockaddr_in servaddr, cliaddr;
     dc_posix_tracer tracer;
     struct dc_posix_env env;
-    char delim[] = " ";
-    uint16_t packet_number;
-
+    const char *hostname;
+    char buffer[MAXLINE];
+    in_port_t port;
     FILE *fp;
+    int sockfd;
 
+    app_settings = arg;
 
     tracer = NULL;
     dc_posix_env_init(&env, tracer);
@@ -368,14 +341,7 @@ void *UDP(void *arg) {
     hostname = dc_setting_string_get(&env, app_settings->hostname);
     port = dc_setting_uint16_get(&env, app_settings->port);
 
-    int sockfd;
-
-    char buffer[MAXLINE];
-
-    struct sockaddr_in servaddr, cliaddr;
-
-    printf("app_settings->address: %d\n", dc_network_create_socket(&env, err, app_settings->address));
-
+    //printf("app_settings->address: %d\n", dc_network_create_socket(&env, err, app_settings->address));
 
     // Creating socket file descriptor
     if ((sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
@@ -408,7 +374,6 @@ void *UDP(void *arg) {
     flags |= O_NONBLOCK;
     fcntl(sockfd, F_SETFL, flags);
 
-    int i = 0;
     int flag = 0;
     while (fuel == 0) {
         n = recvfrom(sockfd, (char *) buffer, MAXLINE,
@@ -417,42 +382,21 @@ void *UDP(void *arg) {
         if (n != -1) {
             if (flag == 0) {
                 fp = fopen(inet_ntoa(cliaddr.sin_addr), "w");
+                fprintf(fp, "%hu\n", app_settings->packet_number);
                 flag = 1;
             }
             buffer[n] = '\0';
-            printf("Client : %s\n", buffer);
+            // printf("Client : %s\n", buffer);
             fprintf(fp, "%s\n", buffer);
-
-//        sendto(sockfd, (const char *) hello, strlen(hello),
-//               MSG_CONFIRM, (const struct sockaddr *) &cliaddr,
-//               len);
-            //   pthread_mutex_init(&mutexFuel, NULL);
-            char *ptr = strtok(buffer, delim);
-            packet_number = (uint16_t) atoi(ptr);
-            numbers[i] = packet_number;
-            i++;
-            counter++;
         }
     }
 
-    printf("IP address is: %s\n", inet_ntoa(cliaddr.sin_addr));
-    printf("port is: %d\n", (int) ntohs(cliaddr.sin_port));
+    // printf("IP address is: %s\n", inet_ntoa(cliaddr.sin_addr));
+    //printf("port is: %d\n", (int) ntohs(cliaddr.sin_port));
 
-    sleep(2);
+    // sleep(2);
     printf("\nUDP Exit...\n");
-
     return NULL;
-}
-
-static size_t count(const char *str, int c) {
-    size_t num;
-    num = 0;
-    for (const char *tmp = str; *tmp; tmp++) {
-        if (*tmp == c) {
-            num++;
-        }
-    }
-    return num;
 }
 
 static bool do_accept(const struct dc_posix_env *env, struct dc_error *err, int *client_socket_fd, void *arg) {
@@ -468,9 +412,6 @@ static bool do_accept(const struct dc_posix_env *env, struct dc_error *err, int 
     uint16_t packet_Size;
     uint16_t starting_time;
 
-    char hbuf[50], sbuf[50];
-
-
     while (1) {
         printf("accepting\n");
 
@@ -480,7 +421,6 @@ static bool do_accept(const struct dc_posix_env *env, struct dc_error *err, int 
 //        if (getnameinfo(app_settings->address->ai_addr, app_settings->address->ai_addrlen, hbuf, sizeof(hbuf), sbuf,
 //                        sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV) == 0)
 //            printf("host=%s, port=%s\n", hbuf, sbuf);
-
 
         if (*client_socket_fd < 0) {
             exit(1);
@@ -511,16 +451,12 @@ static bool do_accept(const struct dc_posix_env *env, struct dc_error *err, int 
 
                 char *ptr = strtok(buff, delim);
                 starting_time = (uint16_t) atoi(ptr);
-                printf("starting_time: %hu\n", starting_time);
 
                 ptr = strtok(NULL, delim);
                 packet_Size = (uint16_t) atoi(ptr);
-                printf("packet_Size: %hu\n", packet_Size);
 
                 ptr = strtok(NULL, delim);
                 app_settings->packet_number = (uint16_t) atoi(ptr);
-                printf("app_settings->packet_number: %hu\n", app_settings->packet_number);
-
 
                 pthread_t thread_1, thread_2;
 
@@ -528,20 +464,14 @@ static bool do_accept(const struct dc_posix_env *env, struct dc_error *err, int 
                     perror("Failed to create thread");
                 }
 
-                uint16_t port_number = dc_setting_uint16_get(env, app_settings->port);
-
                 if (pthread_create(&thread_2, NULL, &UDP, arg) != 0) {
                     perror("Failed to create thread");
                 }
                 pthread_join(thread_1, NULL);
                 pthread_join(thread_2, NULL);
-
-                printf("end child\n");
-
             }
             exit(0);
         } else {
-            printf("parent\n");
             //parent process
             // wait(NULL);
             close(*client_socket_fd);
